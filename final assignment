@@ -1,0 +1,390 @@
+#include <bits/stdc++.h>
+using namespace std;
+
+#define ll long long
+#define pii pair<int,int>
+#define pb push_back
+
+const int n = 500;
+vector<pii> adj[n+5];
+int orig_cost = 0;
+
+struct edge {
+    int u, v, w;
+    bool operator<(const edge& o) const {
+        return w < o.w;
+    }
+};
+vector<edge> edges;
+vector<edge> mst_edges;
+
+// dsu stuff
+int par[n+5], sz[n+5];
+void make_set() {
+    for(int i=0; i<=n; i++) {
+        par[i] = i;
+        sz[i] = 1;
+    }
+}
+int find_set(int v) {
+    if(v == par[v]) return v;
+    return par[v] = find_set(par[v]);
+}
+bool union_set(int a, int b) {
+    a = find_set(a);
+    b = find_set(b);
+    if(a != b) {
+        if(sz[a] < sz[b]) swap(a, b);
+        par[b] = a;
+        sz[a] += sz[b];
+        return true;
+    }
+    return false;
+}
+
+void build_graph() {
+    srand(time(0));
+    // guarantee connected
+    vector<int> p(n);
+    iota(p.begin(), p.end(), 0);
+    random_shuffle(p.begin(), p.end());
+    
+    set<pii> st;
+    for(int i=0; i<n-1; i++) {
+        int u = p[i], v = p[i+1];
+        if(u>v) swap(u,v);
+        int w = rand() % 500 + 1;
+        st.insert({u, v});
+        adj[u].pb({v, w});
+        adj[v].pb({u, w});
+        edges.pb({u, v, w});
+        orig_cost += w;
+    }
+    
+    // add some random edges
+    for(int i=0; i<n; i++){
+        for(int j=i+1; j<n; j++){
+            if(st.count({i,j})) continue;
+            if((rand()%100) < 3) {
+                int w = rand() % 500 + 1;
+                adj[i].pb({j, w});
+                adj[j].pb({i, w});
+                edges.pb({i, j, w});
+                st.insert({i, j});
+                orig_cost += w;
+            }
+        }
+    }
+    cout << "Graph built with " << n << " cities and " << edges.size() << " roads.\n";
+}
+
+void do_mst() {
+    cout << "\n--- TASK 1: MST ---\n";
+    make_set();
+    mst_edges.clear();
+    vector<edge> temp = edges;
+    sort(temp.begin(), temp.end());
+    
+    ll mst_cost = 0;
+    for(auto e : temp) {
+        if(union_set(e.u, e.v)) {
+            mst_cost += e.w;
+            mst_edges.pb(e);
+        }
+    }
+    
+    cout << "Original cost: " << orig_cost << "\n";
+    cout << "MST cost: " << mst_cost << "\n";
+    double saved = 100.0 - (double)mst_cost * 100 / orig_cost;
+    cout << "Saved: " << saved << "%\n";
+    
+    cout << "Some roads selected:\n";
+    for(int i=0; i<min(10, (int)mst_edges.size()); i++){
+        cout << mst_edges[i].u << " - " << mst_edges[i].v << " (w:" << mst_edges[i].w << ")\n";
+    }
+}
+
+void top_cities() {
+    cout << "\n--- TASK 2: Important Cities ---\n";
+    vector<pii> deg(n);
+    for(int i=0; i<n; i++) {
+        deg[i] = {adj[i].size(), i};
+    }
+    sort(deg.rbegin(), deg.rend());
+    
+    for(int i=0; i<10; i++) {
+        cout << "Rank " << i+1 << " - City " << deg[i].second << " (Degree: " << deg[i].first << ")\n";
+    }
+    
+    cout << "\nSuggestions:\n";
+    cout << "Airport should be at City " << deg[0].second << " (highly connected)\n";
+    cout << "Logistics hub at City " << deg[1].second << "\n";
+}
+
+ll dijkstra(int src, int dst, set<int>& bad_nodes, set<pii>& bad_edges, vector<pii> myadj[] = nullptr) {
+    if(bad_nodes.count(src) || bad_nodes.count(dst)) return -1;
+    vector<ll> dist(n, 1e18);
+    vector<int> par_node(n, -1);
+    priority_queue< pair<ll,int>, vector<pair<ll,int>>, greater<pair<ll,int>> > pq;
+    
+    dist[src] = 0;
+    pq.push({0, src});
+    
+    while(!pq.empty()) {
+        auto top = pq.top();
+        pq.pop();
+        ll d = top.first;
+        int u = top.second;
+        
+        if(d > dist[u]) continue;
+        if(u == dst) break;
+        
+        vector<pii>& curr_adj = (myadj == nullptr) ? adj[u] : myadj[u];
+        
+        for(auto edge : curr_adj) {
+            int v = edge.first;
+            int w = edge.second;
+            
+            if(bad_nodes.count(v)) continue;
+            int x = min(u, v), y = max(u, v);
+            if(bad_edges.count({x, y})) continue;
+            
+            if(dist[u] + w < dist[v]) {
+                dist[v] = dist[u] + w;
+                par_node[v] = u;
+                pq.push({dist[v], v});
+            }
+        }
+    }
+    
+    if(dist[dst] == 1e18) return -1;
+    
+    // just printing path here for simplicity
+    vector<int> path;
+    int curr = dst;
+    while(curr != -1) {
+        path.pb(curr);
+        curr = par_node[curr];
+    }
+    reverse(path.begin(), path.end());
+    cout << "Path: ";
+    for(int i=0; i<(int)path.size(); i++) {
+        cout << path[i] << (i==path.size()-1 ? "" : " -> ");
+    }
+    cout << "\n";
+    
+    return dist[dst];
+}
+
+void disaster_recovery() {
+    cout << "\n--- TASK 3: Disaster Recovery ---\n";
+    set<int> bad_nodes;
+    set<pii> bad_edges;
+    
+    cout << "1 for remove cities, 2 for roads, 3 for both: ";
+    int ch; cin >> ch;
+    
+    if(ch == 1 || ch == 3) {
+        cout << "How many cities? ";
+        int c; cin >> c;
+        if(c > 0) cout << "Enter city ids: ";
+        for(int i=0; i<c; i++){
+            int u; cin >> u;
+            bad_nodes.insert(u);
+        }
+    }
+    if(ch == 2 || ch == 3) {
+        cout << "How many roads? ";
+        int r; cin >> r;
+        if(r > 0) cout << "Enter u v: ";
+        for(int i=0; i<r; i++){
+            int u, v; cin >> u >> v;
+            if(u>v) swap(u,v);
+            bad_edges.insert({u,v});
+        }
+    }
+    
+    int a, b, d;
+    cout << "Enter Source A, Source B, Dest D: ";
+    cin >> a >> b >> d;
+    
+    cout << "Route A to D:\n";
+    ll d1 = dijkstra(a, d, bad_nodes, bad_edges);
+    if(d1 == -1) cout << "No valid route available after disaster.\n";
+    else cout << "Dist: " << d1 << "\n";
+    
+    cout << "Route B to D:\n";
+    ll d2 = dijkstra(b, d, bad_nodes, bad_edges);
+    if(d2 == -1) cout << "No valid route available after disaster.\n";
+    else cout << "Dist: " << d2 << "\n";
+}
+
+void traffic_routing() {
+    cout << "\n--- TASK 4: Traffic Routing ---\n";
+    int src, dst;
+    cout << "Enter src and dest: ";
+    cin >> src >> dst;
+    
+    set<int> bn; set<pii> be;
+    cout << "Normal route:\n";
+    ll norm = dijkstra(src, dst, bn, be);
+    if(norm == -1) {
+        cout << "No route.\n"; return;
+    }
+    cout << "Dist: " << norm << "\n";
+    
+    // create traffic graph
+    vector<pii> t_adj[n+5];
+    map<pii, string> status;
+    
+    for(int i=0; i<n; i++){
+        for(auto x : adj[i]){
+            int v = x.first, w = x.second;
+            int u = min(i, v), v_ = max(i, v);
+            if(!status.count({u,v_})) {
+                int r = rand()%3;
+                if(r==0) status[{u,v_}] = "Low";
+                else if(r==1) status[{u,v_}] = "Medium";
+                else status[{u,v_}] = "High";
+            }
+            double mult = 1.0;
+            if(status[{u,v_}] == "Medium") mult = 1.5;
+            if(status[{u,v_}] == "High") mult = 2.5;
+            t_adj[i].pb({v, (int)(w*mult)});
+        }
+    }
+    
+    cout << "Traffic route:\n";
+    ll t_dist = dijkstra(src, dst, bn, be, t_adj);
+    cout << "Dist: " << t_dist << "\n";
+    
+    if(norm > 0) {
+        double diff = (t_dist - norm) * 100.0 / norm;
+        cout << "Delay: " << fixed << setprecision(1) << diff << "%\n";
+    }
+}
+
+int tin[n+5], low[n+5], timer_dfs;
+vector<pii> bridges;
+void dfs(int u, int p) {
+    tin[u] = low[u] = ++timer_dfs;
+    for(auto x : adj[u]) {
+        int v = x.first;
+        if(v == p) continue;
+        if(tin[v]) {
+            low[u] = min(low[u], tin[v]);
+        } else {
+            dfs(v, u);
+            low[u] = min(low[u], low[v]);
+            if(low[v] > tin[u]) {
+                bridges.pb({min(u,v), max(u,v)});
+            }
+        }
+    }
+}
+
+int get_comps(int ignore_node = -1, int ig_u = -1, int ig_v = -1) {
+    vector<bool> vis(n, false);
+    if(ignore_node != -1) vis[ignore_node] = true;
+    int comps = 0;
+    for(int i=0; i<n; i++){
+        if(!vis[i]) {
+            comps++;
+            queue<int> q;
+            q.push(i);
+            vis[i] = true;
+            while(!q.empty()){
+                int u = q.front(); q.pop();
+                for(auto x : adj[u]){
+                    int v = x.first;
+                    if((u==ig_u && v==ig_v) || (u==ig_v && v==ig_u)) continue;
+                    if(!vis[v]) {
+                        vis[v] = true;
+                        q.push(v);
+                    }
+                }
+            }
+        }
+    }
+    return comps;
+}
+
+void check_vuln() {
+    cout << "\n--- TASK 5: Vulnerability Analysis ---\n";
+    
+    int worst_node = -1, max_c = 0;
+    for(int i=0; i<n; i++){
+        int c = get_comps(i);
+        if(c > max_c) {
+            max_c = c;
+            worst_node = i;
+        }
+    }
+    cout << "Most critical city: " << worst_node << "\n";
+    cout << "Breaks network into " << max_c << " components.\n";
+    
+    // reset bridge stuff
+    timer_dfs = 0;
+    memset(tin, 0, sizeof(tin));
+    memset(low, 0, sizeof(low));
+    bridges.clear();
+    for(int i=0; i<n; i++) {
+        if(!tin[i]) dfs(i, -1);
+    }
+    
+    int wu = -1, wv = -1;
+    int mc = 1;
+    
+    for(auto b : bridges) {
+        int c = get_comps(-1, b.first, b.second);
+        if(c > mc) {
+            mc = c;
+            wu = b.first; wv = b.second;
+        }
+    }
+    
+    if(wu == -1) {
+        // if no bridges found, just check mst edges as a fallback
+        for(auto e : mst_edges) {
+            int c = get_comps(-1, e.u, e.v);
+            if(c > mc) {
+                mc = c; wu = e.u; wv = e.v;
+            }
+        }
+    }
+    
+    if(wu != -1) {
+        cout << "Most critical road: " << wu << " - " << wv << "\n";
+        cout << "Breaks network into " << mc << " components.\n";
+    } else {
+        cout << "No single road breaks the network.\n";
+    }
+}
+
+int main() {
+    build_graph();
+    
+    while(true) {
+        cout << "\nMenu:\n";
+        cout << "1. MST Optimization\n";
+        cout << "2. Strategic Cities\n";
+        cout << "3. Disaster Routing\n";
+        cout << "4. Traffic Routing\n";
+        cout << "5. Vulnerability\n";
+        cout << "6. Run All\n";
+        cout << "0. Exit\n";
+        cout << "Choice: ";
+        
+        int c; cin >> c;
+        if(c == 0) break;
+        if(c == 1) do_mst();
+        if(c == 2) top_cities();
+        if(c == 3) disaster_recovery();
+        if(c == 4) traffic_routing();
+        if(c == 5) check_vuln();
+        if(c == 6) {
+            do_mst(); top_cities(); disaster_recovery(); traffic_routing(); check_vuln();
+        }
+    }
+    return 0;
+}
